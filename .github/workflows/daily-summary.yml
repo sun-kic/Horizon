@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Create dummy style.scss
+        run: mkdir -p docs/assets/css && echo "// placeholder" > docs/assets/css/style.scss
+
       - name: Run Horizon
         env:
           # Map secrets to environment variables expected by config.json
@@ -47,4 +50,4 @@ jobs:
           keep_files: true  # Keep existing summaries on gh-pages branch
           commit_message: "📝 Daily Summary: ${{ env.DATE }}"
           publish_branch: gh-pages
-          enable_jekyll: false
+          enable_jekyll: true
