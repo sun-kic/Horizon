@@ -50,4 +50,4 @@ jobs:
           keep_files: true  # Keep existing summaries on gh-pages branch
           commit_message: "📝 Daily Summary: ${{ env.DATE }}"
           publish_branch: gh-pages
-          enable_jekyll: true
+          disable_jekyll: true
