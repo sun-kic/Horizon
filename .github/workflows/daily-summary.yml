@@ -5,12 +5,14 @@ on:
     - cron: '0 8 * * *'  # Runs daily at 08:00 UTC (16:00 北京时间)
   workflow_dispatch:      # Allow manual trigger
 
-jobs:
-  daily-summary:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # Needed to commit changes
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -26,28 +28,89 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Create dummy style.scss
-        run: mkdir -p docs/assets/css && echo "// placeholder" > docs/assets/css/style.scss
-
       - name: Run Horizon
         env:
-          # Map secrets to environment variables expected by config.json
-          # Modify these based on your config.json provider settings
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           LWN_KEY: ${{ secrets.LWN_KEY }}
         run: uv run horizon --hours 48
 
-      - name: Set current date as environment variable
-        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - name: Generate index
+        run: |
+          python3 << 'PYEOF'
+          import urllib.request, json
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+          tree_url = "https://api.github.com/repos/sun-kic/Horizon/git/trees/gh-pages?recursive=1"
+          req = urllib.request.Request(tree_url, headers={"Accept": "application/vnd.github.v3+json"})
+          with urllib.request.urlopen(req) as resp:
+              tree_data = json.loads(resp.read())
+
+          posts = []
+          for item in tree_data.get('tree', []):
+              path = item['path']
+              if path.startswith('_posts/') and path.endswith('.md') and '-zh' in path:
+                  posts.append(path)
+          posts.sort(reverse=True)
+
+          lines = [
+              "---",
+              "layout: default",
+              "title: Horizon Daily",
+              "---",
+              "",
+              "# Horizon",
+              "",
+              "欢迎来到 [Horizon](https://github.com/thysrael/Horizon)，一个 AI 驱动的信息聚合系统。",
+              "",
+              "## 文档",
+              "",
+              "- [配置指南](configuration) — AI 提供商、信息源、过滤规则与环境变量替换",
+              "- [信息源采集器](scrapers) — Horizon 如何从 GitHub、Hacker News、RSS、Reddit 采集内容",
+              "- [评分系统](scoring) — 基于 AI 的内容分析与 0-10 评分体系",
+              "",
+              "## 每日简报",
+              "",
+              "- [中文简报 (feed-zh.xml)](feed-zh.xml)",
+              "- [英文简报 (feed-en.xml)](feed-en.xml)",
+              "",
+              "### 最新内容",
+              "",
+          ]
+          for post in posts[:15]:
+              date = post.split('/')[1].split('-')[0:3]
+              date_str = '-'.join(date)
+              lines.append(f"- [{date_str} 中文简报]({post})")
+
+          lines.extend([
+              "",
+              '<style>',
+              '.rss-icon { display: inline-block; width: 16px; height: 16px; vertical-align: middle; }',
+              '</style>',
+          ])
+
+          with open('index.md', 'w') as f:
+              f.write('\n'.join(lines))
+          print(f"Generated index with {len(posts)} posts")
+          PYEOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
-          keep_files: true  # Keep existing summaries on gh-pages branch
-          commit_message: "📝 Daily Summary: ${{ env.DATE }}"
-          publish_branch: gh-pages
-          disable_jekyll: true
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
