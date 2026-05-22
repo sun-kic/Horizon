@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "ai": {
-    "provider": "google",
+    "provider": "gemini",
     "model": "gemini-2.5-flash",
     "api_key_env": "GOOGLE_API_KEY",
     "temperature": 0.3,
